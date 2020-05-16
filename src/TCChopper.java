@@ -1,34 +1,23 @@
-import org.osbot.rs07.api.filter.Filter;
-import org.osbot.rs07.api.map.Area;
-import org.osbot.rs07.api.map.Position;
-import org.osbot.rs07.api.model.GroundItem;
-import org.osbot.rs07.api.model.NPC;
-import org.osbot.rs07.api.ui.Message;
+import constants.Location;
 import org.osbot.rs07.api.ui.Skill;
 import org.osbot.rs07.script.Script;
 import org.osbot.rs07.script.ScriptManifest;
+import tasks.*;
 import util.Util;
 
-import javax.swing.*;
 import java.awt.*;
-import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
-@ScriptManifest(author = "TripleCheese", name = "TC Chopper", info = "Chop logs at Varrock west", version = 0, logo = "")
+@ScriptManifest(author = "TripleCheese", name = "TC Chopper", info = "Chop logs near Varrock west", version = 0, logo = "")
 public final class TCChopper extends Script {
-    private static final int LOG_ID = 1511;
-    private static final int paintWidth = 200;
-    private static final int paintHight = 130;
-    private static final String TREE_NAME = "Tree";
-    private static final String TREE_LOG = "Logs";
     private static final Skill[] skills = {Skill.WOODCUTTING};
+    private static final int LOG_ID = 1511;
 
-    private long startTime;
+    private List<Task> taskList = new ArrayList<Task>();
     private String status = "Initializing Script";
+    private long startTime;
     private int logPrice = 0;
     private int logsBanked = 0;
 
@@ -36,12 +25,40 @@ public final class TCChopper extends Script {
     @Override
     public final void onStart() {
         startTime = System.currentTimeMillis();
+        for (final Skill skill : skills) {
+            getExperienceTracker().start(skill);
+        }
+
+        Optional<Integer> price = Util.getPrice(LOG_ID);
+        price.ifPresent(integer -> logPrice = integer);
+
+        taskList.add(new Bank(this, "Banking logs"));
+        taskList.add(new WalkToBank(this, "Walking to bank"));
+        taskList.add(new WalkToSpot(this, "Walking to spot", Location.VARROCK_WEST_TREE));
+//        taskList.add(new Drop(this, "Dropping logs"));
+        taskList.add(new Chop(this, "Chopping tree", Location.VARROCK_WEST_TREE));
+
     }
 
     @Override
     public final int onLoop() {
-
-        return random(300, 700);
+        try {
+            for (Task task : taskList) {
+                if (task.activate()) {
+                    status = task.getStatus();
+                    if (task.getName().equalsIgnoreCase("Banking logs")) {
+                        logsBanked += 28 - getInventory().getEmptySlots();
+                    }
+                    task.execute();
+                    break; // Enable break to give priority to top task
+                }
+            }
+        } catch (InterruptedException e) {
+            log("There has been an error!");
+            e.printStackTrace();
+        }
+        status = "Waiting...";
+        return random(500, 800);
     }
 
     @Override
@@ -52,6 +69,8 @@ public final class TCChopper extends Script {
     @Override
     public void onPaint(final Graphics2D g) {
         final long runTime = System.currentTimeMillis() - startTime;
+        final int paintWidth = 200;
+        final int paintHight = 130;
 
 
         // Fill the background color rectangle
